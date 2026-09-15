@@ -1,0 +1,24 @@
+{
+    "manifest_version": 3,
+    "name": "Add subtitles YouTube (New Layout)",
+    "version": "1.0",
+    "description": "Add subtitles YouTube. Used for new YouTube Layout",
+    "author": "ANT Software",
+    "permissions": ["storage", "activeTab", "scripting"],
+    "action": {
+        "default_icon": {
+            "16": "images/icon16.png",
+            "64": "images/icon64.png",
+            "128": "images/icon128.png"
+        },
+        "default_popup": "index.html"
+    },
+    "icons": {
+        "16": "images/icon16.png",
+        "64": "images/icon64.png",
+        "128": "images/icon128.png"
+    },
+    "background": {
+        "service_worker": "background.js"
+    }
+}

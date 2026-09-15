@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Add Subtitles Youtube</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
+        rel="stylesheet">
+    <style>
+        /* Reset & font */
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Lớp mô phỏng Tailwind */
+        .p-2 {
+            padding: 0.5rem;
+            /* 8px */
+        }
+
+        .space-y-2>*+* {
+            margin-top: 1rem;
+            /* 8px giữa các phần tử con */
+        }
+
+        .mt-5 {
+            margin-top: 1.25rem;
+            /* 20px */
+        }
+
+        /* Style cho input (mô phỏng bg-gray-50, border-gray-300, text-gray-900, rounded-lg, p-2, ... ) */
+        .input-field {
+            background-color: #F9FAFB;
+            /* bg-gray-50 */
+            border: 1px solid #D1D5DB;
+            /* border-gray-300 */
+            color: #111827;
+            /* text-gray-900 */
+            border-radius: 0.5rem;
+            /* rounded-lg */
+            display: block;
+            width: 100%;
+            padding: 0.5rem;
+            /* p-2 */
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #3B82F6;
+            /* focus:border-blue-500 */
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+            /* tương tự focus:ring-blue-500 */
+        }
+
+        /* Style cho nút (mô phỏng text-white, bg-blue-700, hover:bg-blue-800, rounded-lg, px-5, py-2.5, ... ) */
+        .btn {
+            color: #FFFFFF;
+            /* text-white */
+            cursor: pointer;
+            background-color: #1D4ED8;
+            /* bg-blue-700 */
+            border: none;
+            font-weight: 500;
+            /* font-medium */
+            border-radius: 0.5rem;
+            /* rounded-lg */
+            padding: 0.625rem 1.25rem;
+            /* py-2.5 (0.625rem) và px-5 (1.25rem) */
+            margin-right: 0.5rem;
+            /* me-2 */
+            margin-bottom: 0.5rem;
+            /* mb-2 */
+            width: 100%;
+            font-size: 14px;
+        }
+
+        .btn:hover {
+            background-color: #1E40AF;
+            /* hover:bg-blue-800 */
+        }
+
+        .btn:focus {
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(147, 197, 253, 0.5);
+            /* tương tự focus:ring-4 focus:ring-blue-300 */
+        }
+
+        /* Label hiển thị dạng block với khoảng cách nhỏ bên dưới */
+        label {
+            display: block;
+            margin-bottom: 0.25rem;
+            font-weight: 400;
+        }
+
+        .container {
+            width: 400px;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div id="form_add_title" class="add-title">
+            <div class="space-y-2">
+                <div>
+                    <label for="linkGGSheetTitle">Link Google sheet</label>
+                    <input type="text" id="linkGGSheetTitle" name="linkGGSheet" class="input-field" />
+                </div>
+
+                <div>
+                    <label for="sheetNameTitle">Tên trang tính</label>
+                    <input type="text" id="sheetNameTitle" name="sheetName" class="input-field" />
+                </div>
+
+                <div>
+                    <label for="columnLangIDTitle">Cột mã ngôn ngữ</label>
+                    <input type="text" id="columnLangIDTitle" name="langID" class="input-field"
+                        style="text-transform: uppercase" />
+                </div>
+
+                <div>
+                    <label for="columnTitleTitle">Cột tiêu đề</label>
+                    <input type="text" id="columnTitleTitle" name="title" class="input-field"
+                        style="text-transform: uppercase" />
+                </div>
+
+                <div>
+                    <label for="columnDescriptionTitle">Cột mô tả</label>
+                    <input type="text" id="columnDescriptionTitle" name="description" class="input-field"
+                        style="text-transform: uppercase" />
+                </div>
+            </div>
+            <div class="mt-5">
+                <button type="submit" id="add_title_btn" class="btn">
+                    Thêm tiêu đề
+                </button>
+            </div>
+        </div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+
+</html>
