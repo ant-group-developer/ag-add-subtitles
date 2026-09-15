@@ -42,167 +42,139 @@ submitBtn.addEventListener("click", async () => {
 
 async function onSubmit(values) {
     // ============================================================================================
-    async function waitUntilElement(selector, timeout) {
-        // console.log("waitUntilElement");
-        let duration = 0;
-        const delay = (ms) => new Promise((res) => setTimeout(res, ms));
-        while (duration < timeout) {
-            var ele = document.querySelector(selector);
-            if (ele) {
-                break;
-            }
-            await delay(10);
-            duration += 10;
-        }
-    }
+    const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-    async function checkItemVisible(languageText, timeout) {
-        const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+    async function waitUntilElement(selector, timeout) {
         let duration = 0;
         while (duration < timeout) {
-            var list = document.querySelectorAll(
-                "table ytgn-video-translation-row"
-            );
-            for (const item of list) {
-                var text = item
-                    .querySelector(
-                        ".language-text.style-scope.ytgn-video-translation-row"
-                    )
-                    .textContent.trim();
-                if (text == languageText) {
-                    return item;
-                }
+            const ele = document.querySelector(selector);
+            if (ele) {
+                return ele;
             }
-            await delay(10);
-            duration += 10;
+            await delay(50);
+            duration += 50;
         }
         return null;
     }
 
-    async function clickButtonAdd(item, timeout) {
-        // console.log("waitButtonPublishEnable");
-        const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+    async function waitUntilElementVisible(selector, item, timeout) {
         let duration = 0;
         while (duration < timeout) {
-            // var eles = item.querySelector('.metadata-hover-cell-container.remove-default-style.style-scope.ytgn-video-translation-cell-metadata ytgn-video-translation-hover-cell').querySelector('#hover-items-container ytcp-icon-button');
-            var eles = item.querySelector("ytcp-icon-button#metadata-add");
-            if (eles) {
-                var btn = eles;
-                btn.click();
-                break;
+            const ele = item.querySelector(selector);
+            if (ele) {
+                return ele;
             }
-            await delay(10);
-            duration += 10;
+            await delay(50);
+            duration += 50;
         }
+        return null;
+    }
+
+    function setInputValue(container, text) {
+        if (!container) return false;
+        const inputEle = container.querySelector(
+            "#textbox, ytcp-social-suggestion-input div[contenteditable='true'], ytcp-social-suggestion-input div, textarea"
+        );
+        if (!inputEle) return false;
+
+        if (inputEle.tagName.toLowerCase() === "textarea") {
+            inputEle.value = text || "";
+        } else {
+            inputEle.focus();
+            inputEle.textContent = text || "";
+        }
+
+        inputEle.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+        inputEle.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+        return true;
     }
 
     async function addNewVersion(title, description, languageText) {
         console.log("addNewVersion", { title, description, languageText });
-        // var item = await GetWrap(languageText, 10000);
-        var item = document;
-        await waitUntilElementVisible(
-            "#translated-title > div > textarea",
-            item,
-            5000
-        );
-        var inputTitle = item.querySelector(
-            "ytcp-social-suggestions-textbox#metadata-title ytcp-social-suggestion-input div"
-        );
-        inputTitle.textContent = title;
-        inputTitle.dispatchEvent(new Event("input"));
+        const item = document;
 
-        // //nhập description
-        if (description) {
-            // await waitUntilElementVisible(
-            //     "#translated-description > div > textarea",
-            //     item,
-            //     5000
-            // );
-            var inputDescription = item.querySelector(
-                "ytcp-social-suggestions-textbox#metadata-description ytcp-social-suggestion-input div"
-            );
-            inputDescription.textContent = description;
-            inputDescription.dispatchEvent(new Event("input"));
+        // Chờ modal dialog hiển thị ô Title (hỗ trợ cả layout mới có class và layout cũ có id)
+        const titleSelector =
+            "ytcp-social-suggestions-textbox.metadata-title, ytcp-social-suggestions-textbox#metadata-title, .metadata-title, #metadata-title, #translated-title";
+        await waitUntilElementVisible(titleSelector, item, 10000);
+
+        // 1. Nhập Title
+        const titleContainer = item.querySelector(titleSelector);
+        if (titleContainer) {
+            setInputValue(titleContainer, title);
+        } else {
+            console.error("Không tìm thấy container Title!");
         }
-        // //xuất bản
+
+        // 2. Nhập Description (nếu có)
+        if (description) {
+            const descSelector =
+                "ytcp-social-suggestions-textbox.metadata-description, ytcp-social-suggestions-textbox#metadata-description, .metadata-description, #metadata-description, #translated-description";
+            const descContainer = item.querySelector(descSelector);
+            if (descContainer) {
+                setInputValue(descContainer, description);
+            } else {
+                console.error("Không tìm thấy container Description!");
+            }
+        }
+
+        // 3. Xuất bản / Update
         await waitButtonPublishEnable(item, 10000);
         await checkAddTitleSuccess(languageText, 3000);
+        // Khoảng nghỉ để YouTube đóng dialog trước khi sang ngôn ngữ tiếp theo
+        await delay(500);
     }
 
     async function waitButtonPublishEnable(item, timeout) {
-        // console.log("waitButtonPublishEnable");
-        const delay = (ms) => new Promise((res) => setTimeout(res, ms));
         let duration = 0;
         while (duration < timeout) {
-            var eles = item
-                .querySelector("ytcp-button.ytgn-language-dialog-update")
-                .getAttribute("aria-disabled");
-            if (eles == "false") {
-                var btn = item.querySelector(
-                    "ytcp-button.ytgn-language-dialog-update"
-                );
-                btn.click();
-                console.log("publish button");
-                break;
-            }
-            await delay(10);
-            duration += 10;
-        }
-    }
+            const btn = item.querySelector(
+                "ytcp-button.ytgn-language-dialog-update, ytcp-button#publish-button"
+            );
+            if (btn) {
+                const ariaDisabled = btn.getAttribute("aria-disabled");
+                const hasDisabledAttr = btn.hasAttribute("disabled");
+                const innerBtn = btn.querySelector("button");
+                const innerDisabled = innerBtn
+                    ? (innerBtn.disabled ||
+                       innerBtn.getAttribute("aria-disabled") === "true" ||
+                       innerBtn.classList.contains("ytcpButtonShapeImpl--disabled"))
+                    : false;
 
-    async function GetWrap(languageText, timeout) {
-        const delay = (ms) => new Promise((res) => setTimeout(res, ms));
-        let duration = 0;
-        while (duration < timeout) {
-            var list = document.querySelectorAll("#metadata-editor-wrapper");
-            for (const item of list) {
-                var text = item
-                    .querySelector(
-                        "#language-name-row .metadata-editor-translated .language-header"
-                    )
-                    .textContent.trim();
-                console.log(text + "||||" + languageText);
-                if (text == languageText) {
-                    return item;
+                // Nút kích hoạt khi không bị disabled ở cả wrapper lẫn button con
+                const isEnabled =
+                    (ariaDisabled === "false" || (!hasDisabledAttr && ariaDisabled !== "true")) &&
+                    !innerDisabled;
+
+                if (isEnabled) {
+                    if (innerBtn) {
+                        innerBtn.click();
+                    }
+                    btn.click();
+                    console.log("publish/update button clicked");
+                    return true;
                 }
             }
-            await delay(10);
-            duration += 10;
+            await delay(100);
+            duration += 100;
         }
-        return null;
+        console.warn("Hết thời gian chờ nút Update kích hoạt");
+        return false;
     }
 
     async function checkAddTitleSuccess(languageText, timeout) {
-        const delay = (ms) => new Promise((res) => setTimeout(res, ms));
         let duration = 0;
         while (duration < timeout) {
-            var text = document
-                .querySelectorAll(
-                    "ytgn-video-translation-row.style-scope.ytgn-video-translations-list div.language-text.style-scope.ytgn-video-translation-row"
-                )[0]
-                .textContent.trim();
-            if (text == languageText) {
-                console.log("check success");
-                break;
-            } else {
-                // console.log("check failed");
-            }
-            await delay(10);
-            duration += 10;
-        }
-    }
-
-    async function waitUntilElementVisible(selector, item, timeout) {
-        // console.log("waitUntilElementVisible");
-        const delay = (ms) => new Promise((res) => setTimeout(res, ms));
-        let duration = 0;
-        while (duration < timeout) {
-            var eles = item.querySelector(selector);
-            if (eles) {
+            const rows = document.querySelectorAll(
+                "ytgn-video-translation-row.style-scope.ytgn-video-translations-list div.language-text.style-scope.ytgn-video-translation-row, table ytgn-video-translation-row .language-text"
+            );
+            const text = rows[0]?.textContent?.trim();
+            if (text === languageText) {
+                console.log("check success:", languageText);
                 break;
             }
-            await delay(10);
-            duration += 10;
+            await delay(100);
+            duration += 100;
         }
     }
     // ============================================================================================
@@ -211,48 +183,46 @@ async function onSubmit(values) {
         alert("Không có dữ liệu Google sheet");
         return false;
     }
+
     for (const val of values.data) {
         try {
-            // console.log("val:", val);
             if (!val[values.colLangID - 1]) {
                 continue;
             }
 
             await waitUntilElement("ytcp-button#add-translations-button", 5000);
-            var addTrans = document.querySelector(
+            const addTrans = document.querySelector(
                 "ytcp-button#add-translations-button"
             );
-            addTrans.click();
-
-            var langID = val[values.colLangID - 1];
-            var elementLanguage = "tp-yt-paper-item[test-id=" + langID + "]";
-            await waitUntilElement(elementLanguage, 3000);
-            var chooseLanguage = document.querySelector(elementLanguage);
-            // console.log(chooseLanguage)
-            var languageText = document
-                .querySelector(elementLanguage + " yt-formatted-string")
-                .textContent.trim();
-            // console.log(languageText)
-            if (
-                !chooseLanguage &&
-                chooseLanguage.getAttribute("aria-disabled") == "true"
-            ) {
+            if (!addTrans) {
+                console.warn("Không tìm thấy nút thêm bản dịch");
                 continue;
             }
+            addTrans.click();
+
+            const langID = val[values.colLangID - 1];
+            const elementLanguage = `tp-yt-paper-item[test-id="${langID}"]`;
+            await waitUntilElement(elementLanguage, 3000);
+            const chooseLanguage = document.querySelector(elementLanguage);
+
+            if (
+                !chooseLanguage ||
+                chooseLanguage.getAttribute("aria-disabled") === "true"
+            ) {
+                console.warn("Ngôn ngữ không hợp lệ hoặc bị vô hiệu hóa:", langID);
+                continue;
+            }
+
+            const languageText =
+                chooseLanguage.querySelector("yt-formatted-string")?.textContent?.trim() || "";
+
             chooseLanguage.click();
 
-            // var item = await checkItemVisible(languageText, 5000);
-            // if (item != null) {
-            // item.querySelector(
-            //     ".metadata-hover-cell-container.remove-default-style.style-scope.ytgn-video-translation-cell-metadata ytgn-video-translation-hover-cell"
-            // ).dispatchEvent(new Event("mouseover"));
-            // await clickButtonAdd(item, 5000);
             await addNewVersion(
                 val[values.colTitle - 1],
                 val[values.colDescription - 1],
                 languageText
             );
-            // }
         } catch (error) {
             console.log("error", error);
         }

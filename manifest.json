@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "Add subtitles YouTube (New Layout)",
-    "version": "1.0",
-    "description": "Add subtitles YouTube. Used for new YouTube Layout",
+    "name": "Add subtitles YouTube (All Layouts)",
+    "version": "2.0",
+    "description": "Add subtitles YouTube. Supports both new and classic YouTube Studio layouts",
     "author": "ANT Software",
     "permissions": ["storage", "activeTab", "scripting"],
     "action": {
