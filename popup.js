@@ -44,10 +44,10 @@ async function onSubmit(values) {
     // ============================================================================================
     const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-    async function waitUntilElement(selector, timeout) {
+    async function waitUntilElement(selector, timeout, root = document) {
         let duration = 0;
         while (duration < timeout) {
-            const ele = document.querySelector(selector);
+            const ele = root.querySelector(selector);
             if (ele) {
                 return ele;
             }
@@ -72,12 +72,16 @@ async function onSubmit(values) {
 
     function setInputValue(container, text) {
         if (!container) return false;
-        const inputEle = container.querySelector(
-            "#textbox, ytcp-social-suggestion-input div[contenteditable='true'], ytcp-social-suggestion-input div, textarea"
-        );
+        let inputEle = container;
+        const tagName = inputEle.tagName ? inputEle.tagName.toLowerCase() : "";
+        if (tagName !== "textarea" && !inputEle.getAttribute?.("contenteditable")) {
+            inputEle = container.querySelector(
+                "#textbox, ytcp-social-suggestion-input div[contenteditable='true'], ytcp-social-suggestion-input div, textarea"
+            );
+        }
         if (!inputEle) return false;
 
-        if (inputEle.tagName.toLowerCase() === "textarea") {
+        if (inputEle.tagName && inputEle.tagName.toLowerCase() === "textarea") {
             inputEle.value = text || "";
         } else {
             inputEle.focus();
@@ -89,16 +93,234 @@ async function onSubmit(values) {
         return true;
     }
 
-    async function addNewVersion(title, description, languageText) {
-        console.log("addNewVersion", { title, description, languageText });
+    // Kiểm tra xem Modal Dialog của giao diện mới có ĐANG THỰC SỰ HIỂN THỊ trên màn hình hay không
+    function isNewDialogActuallyOpen() {
+        const titleBox = document.querySelector(
+            "ytcp-social-suggestions-textbox.metadata-title, ytcp-social-suggestions-textbox#metadata-title, .ytgn-language-dialog ytcp-social-suggestions-textbox"
+        );
+        if (titleBox) {
+            const rect = titleBox.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                const style = window.getComputedStyle(titleBox);
+                if (style.display !== "none" && style.visibility !== "hidden") {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Kiểm tra xem một dòng trong bảng có phải là ngôn ngữ mặc định của video hay không
+    // Đặc điểm ngôn ngữ mặc định: CHỈ có nút sửa (edit/pencil), KHÔNG CÓ nút xóa hay menu tùy chọn (options)
+    function isDefaultVideoLanguageRow(rowItem) {
+        if (!rowItem) return false;
+
+        // 1. Kiểm tra văn bản ngôn ngữ có chứa chỉ dấu ngôn ngữ video mặc định
+        // Ví dụ: "English (video language)", "Tiếng Việt (ngôn ngữ của video)"
+        const langText = (
+            rowItem.querySelector(".language-text, .tablecell-language")?.textContent || ""
+        ).trim().toLowerCase();
+
+        if (
+            langText.includes("video language") ||
+            langText.includes("ngôn ngữ của video") ||
+            langText.includes("ngôn ngữ video") ||
+            /\([^)]*video[^)]*\)/i.test(langText)
+        ) {
+            return true;
+        }
+
+        // 2. Kiểm tra xem dòng có nút Xóa hoặc Menu Tùy chọn (Options/Delete) hay không
+        // Các hàng bản dịch thông thường luôn có menu 3 chấm (Options) hoặc nút Xóa (Delete)
+        // Hàng ngôn ngữ mặc định CHỈ có nút sửa (edit/pencil), HOÀN TOÀN KHÔNG CÓ nút/menu Xóa
+        const hasDeleteOrOptions = rowItem.querySelector(
+            "ytcp-icon-button#delete, ytcp-icon-button#options, ytcp-icon-button[aria-label*='Delete' i], ytcp-icon-button[aria-label*='Xóa' i], ytcp-icon-button[aria-label*='Option' i], ytcp-icon-button[aria-label*='Tùy chọn' i], #delete-button"
+        );
+
+        const hasEditBtn = rowItem.querySelector(
+            "ytcp-icon-button#metadata-edit, ytcp-icon-button[aria-label*='Edit' i], ytcp-icon-button[aria-label*='Chỉnh sửa' i], ytcp-icon-button#captions-edit"
+        );
+
+        const hasAddBtn = rowItem.querySelector(
+            "ytcp-icon-button#metadata-add, ytcp-icon-button#captions-add, [aria-label*='Add' i], [aria-label*='Thêm' i]"
+        );
+
+        // Nếu dòng chỉ có nút sửa, không có bất kỳ nút/menu xóa hay options nào và không có nút thêm -> Ngôn ngữ mặc định
+        if (hasEditBtn && !hasDeleteOrOptions && !hasAddBtn) {
+            return true;
+        }
+
+        return false;
+    }
+
+    // --- Logic hỗ trợ Giao diện Cũ (Table Row) ---
+    async function checkItemVisible(languageText, timeout) {
+        let duration = 0;
+        while (duration < timeout) {
+            const list = document.querySelectorAll(
+                "#table-list ytgn-video-translation-row, ytgn-video-translation-row, tr.ytgn-video-translation-row, tr#row-container"
+            );
+            for (const item of list) {
+                // Bỏ qua nếu đây là dòng ngôn ngữ mặc định của video (chỉ có sửa, không có xóa)
+                if (isDefaultVideoLanguageRow(item)) {
+                    continue;
+                }
+
+                const text = item
+                    .querySelector(
+                        ".language-text.style-scope.ytgn-video-translation-row, .language-text"
+                    )
+                    ?.textContent?.trim();
+                if (
+                    text === languageText ||
+                    (text && languageText && (text.toLowerCase() === languageText.toLowerCase() || text.includes(languageText) || languageText.includes(text)))
+                ) {
+                    return item;
+                }
+            }
+            await delay(50);
+            duration += 50;
+        }
+        return null;
+    }
+
+    function triggerHoverMetadata(rowItem) {
+        if (!rowItem) return null;
+        // Chỉ nhắm vào ô Metadata (Title & Description), TUYỆT ĐỐI không hover sang ô Captions (Subtitles)
+        const metadataCell =
+            rowItem.querySelector("td.tablecell-metadata") ||
+            rowItem.querySelector("ytgn-video-translation-cell-metadata") ||
+            rowItem.querySelector(".tablecell-metadata") ||
+            rowItem;
+
+        const targets = [
+            metadataCell.querySelector(".metadata-hover-cell-container ytgn-video-translation-hover-cell"),
+            metadataCell.querySelector(".metadata-hover-cell-container"),
+            metadataCell.querySelector("ytgn-video-translation-hover-cell"),
+            metadataCell.querySelector("#cell-container"),
+            metadataCell,
+        ];
+        for (const target of targets) {
+            if (target) {
+                target.dispatchEvent(new Event("mouseover", { bubbles: true }));
+                target.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true }));
+                target.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true, cancelable: true }));
+            }
+        }
+        return metadataCell;
+    }
+
+    const triggerHover = triggerHoverMetadata;
+
+    async function clickButtonAdd(item, timeout) {
+        let duration = 0;
+        while (duration < timeout) {
+            const metadataCell = triggerHoverMetadata(item) || item;
+
+            // CHỈ tìm nút mở Title & Description (#metadata-add / #metadata-edit), TUYỆT ĐỐI KHÔNG click #captions-add
+            const btn =
+                metadataCell.querySelector("ytcp-icon-button#metadata-add") ||
+                metadataCell.querySelector("ytcp-icon-button#metadata-edit") ||
+                item.querySelector("td.tablecell-metadata ytcp-icon-button#metadata-add, ytgn-video-translation-cell-metadata ytcp-icon-button#metadata-add") ||
+                item.querySelector("ytcp-icon-button#metadata-add") ||
+                metadataCell.querySelector(".hover-items-container ytcp-icon-button") ||
+                metadataCell.querySelector("ytcp-icon-button");
+
+            // Bảo vệ nghiêm ngặt: không click nếu là nút phụ đề (captions)
+            if (
+                btn &&
+                btn.id !== "captions-add" &&
+                !btn.closest("td.tablecell-captions, ytgn-video-translation-cell-captions")
+            ) {
+                const inner = btn.querySelector("button") || btn;
+                inner.click();
+                btn.click();
+                console.log("clickButtonAdd: đã click nút mở modal/editor Title & Description (#metadata-add)");
+                return true;
+            }
+            await delay(50);
+            duration += 50;
+        }
+        console.warn("clickButtonAdd: hết thời gian chờ nút metadata-add");
+        return false;
+    }
+
+    async function GetWrap(languageText, timeout) {
+        let duration = 0;
+        while (duration < timeout) {
+            const list = document.querySelectorAll("#metadata-editor-wrapper");
+            if (list.length === 1) {
+                return list[0];
+            }
+            for (const item of list) {
+                const text = item
+                    .querySelector(
+                        "#language-name-row .metadata-editor-translated .language-header"
+                    )
+                    ?.textContent?.trim();
+                if (
+                    text &&
+                    (text === languageText || text.includes(languageText) || languageText.includes(text))
+                ) {
+                    return item;
+                }
+            }
+            await delay(50);
+            duration += 50;
+        }
+        return document.querySelector("#metadata-editor-wrapper") || document;
+    }
+
+    async function addNewVersionClassic(title, description, languageText) {
+        console.log("addNewVersionClassic (Giao diện cũ)", { title, description, languageText });
+        const wrap = await GetWrap(languageText, 10000);
+        const scope = wrap || document;
+
+        const titleSelector =
+            "#translated-title textarea, #translated-title > div > textarea, #translated-title, .metadata-title, #metadata-title";
+        await waitUntilElementVisible(titleSelector, scope, 8000);
+
+        const titleContainer =
+            scope.querySelector("#translated-title textarea, #translated-title > div > textarea") ||
+            scope.querySelector("#translated-title") ||
+            scope.querySelector(titleSelector);
+
+        if (titleContainer) {
+            setInputValue(titleContainer, title);
+        } else {
+            console.error("Không tìm thấy ô Title giao diện cũ!");
+        }
+
+        if (description) {
+            const descSelector =
+                "#translated-description textarea, #translated-description > div > textarea, #translated-description, .metadata-description, #metadata-description";
+            await waitUntilElementVisible(descSelector, scope, 5000);
+            const descContainer =
+                scope.querySelector("#translated-description textarea, #translated-description > div > textarea") ||
+                scope.querySelector("#translated-description") ||
+                scope.querySelector(descSelector);
+
+            if (descContainer) {
+                setInputValue(descContainer, description);
+            } else {
+                console.error("Không tìm thấy ô Description giao diện cũ!");
+            }
+        }
+
+        await waitButtonPublishEnable(scope, 10000);
+        await checkAddTitleSuccess(languageText, 3000);
+        await delay(500);
+    }
+
+    // --- Logic hỗ trợ Giao diện Mới (Modal Dialog) ---
+    async function addNewVersionDialog(title, description, languageText) {
+        console.log("addNewVersionDialog (Giao diện mới)", { title, description, languageText });
         const item = document;
 
-        // Chờ modal dialog hiển thị ô Title (hỗ trợ cả layout mới có class và layout cũ có id)
         const titleSelector =
             "ytcp-social-suggestions-textbox.metadata-title, ytcp-social-suggestions-textbox#metadata-title, .metadata-title, #metadata-title, #translated-title";
         await waitUntilElementVisible(titleSelector, item, 10000);
 
-        // 1. Nhập Title
         const titleContainer = item.querySelector(titleSelector);
         if (titleContainer) {
             setInputValue(titleContainer, title);
@@ -106,7 +328,6 @@ async function onSubmit(values) {
             console.error("Không tìm thấy container Title!");
         }
 
-        // 2. Nhập Description (nếu có)
         if (description) {
             const descSelector =
                 "ytcp-social-suggestions-textbox.metadata-description, ytcp-social-suggestions-textbox#metadata-description, .metadata-description, #metadata-description, #translated-description";
@@ -118,19 +339,18 @@ async function onSubmit(values) {
             }
         }
 
-        // 3. Xuất bản / Update
         await waitButtonPublishEnable(item, 10000);
         await checkAddTitleSuccess(languageText, 3000);
-        // Khoảng nghỉ để YouTube đóng dialog trước khi sang ngôn ngữ tiếp theo
         await delay(500);
     }
 
+    // --- Hàm chờ nút Publish / Update chung cho cả 2 giao diện ---
     async function waitButtonPublishEnable(item, timeout) {
         let duration = 0;
+        const scope = item || document;
         while (duration < timeout) {
-            const btn = item.querySelector(
-                "ytcp-button.ytgn-language-dialog-update, ytcp-button#publish-button"
-            );
+            const selector = "ytcp-button.ytgn-language-dialog-update, ytcp-button#publish-button";
+            const btn = scope.querySelector(selector) || document.querySelector(selector);
             if (btn) {
                 const ariaDisabled = btn.getAttribute("aria-disabled");
                 const hasDisabledAttr = btn.hasAttribute("disabled");
@@ -141,10 +361,10 @@ async function onSubmit(values) {
                        innerBtn.classList.contains("ytcpButtonShapeImpl--disabled"))
                     : false;
 
-                // Nút kích hoạt khi không bị disabled ở cả wrapper lẫn button con
+                // Nút kích hoạt khi không bị disabled
                 const isEnabled =
-                    (ariaDisabled === "false" || (!hasDisabledAttr && ariaDisabled !== "true")) &&
-                    !innerDisabled;
+                    ariaDisabled === "false" ||
+                    (!hasDisabledAttr && ariaDisabled !== "true" && !innerDisabled);
 
                 if (isEnabled) {
                     if (innerBtn) {
@@ -158,7 +378,7 @@ async function onSubmit(values) {
             await delay(100);
             duration += 100;
         }
-        console.warn("Hết thời gian chờ nút Update kích hoạt");
+        console.warn("Hết thời gian chờ nút Publish/Update kích hoạt");
         return false;
     }
 
@@ -186,10 +406,15 @@ async function onSubmit(values) {
 
     for (const val of values.data) {
         try {
-            if (!val[values.colLangID - 1]) {
+            const langID = val[values.colLangID - 1];
+            if (!langID) {
                 continue;
             }
 
+            const title = val[values.colTitle - 1] || "";
+            const description = val[values.colDescription - 1] || "";
+
+            // 1. Mở menu danh sách ngôn ngữ
             await waitUntilElement("ytcp-button#add-translations-button", 5000);
             const addTrans = document.querySelector(
                 "ytcp-button#add-translations-button"
@@ -198,31 +423,105 @@ async function onSubmit(values) {
                 console.warn("Không tìm thấy nút thêm bản dịch");
                 continue;
             }
+
+            const innerAddBtn = addTrans.querySelector("button");
+            if (innerAddBtn) innerAddBtn.click();
             addTrans.click();
 
-            const langID = val[values.colLangID - 1];
+            // 2. Tìm phần tử ngôn ngữ trong dropdown
             const elementLanguage = `tp-yt-paper-item[test-id="${langID}"]`;
             await waitUntilElement(elementLanguage, 3000);
             const chooseLanguage = document.querySelector(elementLanguage);
 
-            if (
-                !chooseLanguage ||
-                chooseLanguage.getAttribute("aria-disabled") === "true"
-            ) {
-                console.warn("Ngôn ngữ không hợp lệ hoặc bị vô hiệu hóa:", langID);
+            if (!chooseLanguage) {
+                console.warn("Không tìm thấy ngôn ngữ trong dropdown:", langID);
+                document.body.click();
                 continue;
             }
 
             const languageText =
                 chooseLanguage.querySelector("yt-formatted-string")?.textContent?.trim() || "";
+            const isItemDisabled = chooseLanguage.getAttribute("aria-disabled") === "true";
 
+            // 3. Nếu ngôn ngữ ĐÃ CÓ SẴN TRONG BẢNG (bị disabled trong menu)
+            if (isItemDisabled) {
+                document.body.click(); // Đóng dropdown menu
+                await delay(300);
+
+                // Kiểm tra nếu ngôn ngữ này là ngôn ngữ mặc định của video (chỉ có sửa, không có xóa) -> Bỏ qua
+                const allRows = document.querySelectorAll(
+                    "#table-list ytgn-video-translation-row, ytgn-video-translation-row, tr.ytgn-video-translation-row, tr#row-container"
+                );
+                let isDefaultRow = false;
+                for (const r of allRows) {
+                    const rText = (r.querySelector(".language-text, .tablecell-language")?.textContent || "").trim().toLowerCase();
+                    const targetText = languageText.trim().toLowerCase();
+                    if (
+                        (rText === targetText || rText.includes(targetText) || targetText.includes(rText)) &&
+                        isDefaultVideoLanguageRow(r)
+                    ) {
+                        isDefaultRow = true;
+                        break;
+                    }
+                }
+
+                if (isDefaultRow) {
+                    console.log(
+                        `Bỏ qua ngôn ngữ ${languageText} [${langID}] vì là ngôn ngữ mặc định của video (chỉ có nút sửa, không có nút xóa).`
+                    );
+                    continue;
+                }
+
+                console.log(`Ngôn ngữ ${languageText} [${langID}] đã có trong bảng bản dịch, tiến hành mở modal chỉnh sửa`);
+                const existingRow = await checkItemVisible(languageText, 3000);
+                if (existingRow) {
+                    triggerHover(existingRow);
+                    const clicked = await clickButtonAdd(existingRow, 5000);
+                    if (clicked) {
+                        await addNewVersionClassic(title, description, languageText);
+                    }
+                } else {
+                    console.warn("Không tìm thấy hàng tương ứng trong bảng:", languageText);
+                }
+                continue;
+            }
+
+            // 4. Nếu ngôn ngữ CHƯA CÓ, click để thêm
             chooseLanguage.click();
-
-            await addNewVersion(
-                val[values.colTitle - 1],
-                val[values.colDescription - 1],
-                languageText
+            chooseLanguage.dispatchEvent(
+                new MouseEvent("click", { bubbles: true, cancelable: true })
             );
+
+            // 5. Nhận diện layout: Chờ xem Modal Dialog của giao diện mới có hiển thị thực sự trên màn hình không
+            let isNewLayout = false;
+            let waitTime = 0;
+            while (waitTime < 2000) {
+                if (isNewDialogActuallyOpen()) {
+                    isNewLayout = true;
+                    break;
+                }
+                await delay(100);
+                waitTime += 100;
+            }
+
+            if (isNewLayout) {
+                console.log("Phát hiện giao diện mới (Modal Dialog hiển thị)");
+                await addNewVersionDialog(title, description, languageText);
+            } else {
+                console.log("Xử lý giao diện cũ: tìm hàng trong bảng để mở modal/editor:", languageText);
+                const rowItem = await checkItemVisible(languageText, 6000);
+                if (rowItem) {
+                    triggerHover(rowItem);
+                    const clicked = await clickButtonAdd(rowItem, 5000);
+                    if (clicked) {
+                        await addNewVersionClassic(title, description, languageText);
+                    } else {
+                        console.warn("Không click được nút Thêm bản dịch trên dòng:", languageText);
+                    }
+                } else {
+                    console.warn("Không tìm thấy dòng ngôn ngữ trong bảng sau khi click:", languageText);
+                }
+            }
         } catch (error) {
             console.log("error", error);
         }
